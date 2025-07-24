@@ -1,0 +1,21 @@
+{
+  "name": "apigoogleejemplo",
+  "version": "1.0.0",
+  "description": "1. **Crea un proyecto en Google Cloud Console**    - Ve a https://console.cloud.google.com/    - Habilita la API de Google Drive.    - Crea credenciales de tipo \"OAuth client ID\" (aplicación de escritorio).    - Descarga el archivo `credentials.json` y colócalo en la raíz de este proyecto.",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "googleapis": "^154.0.0",
+    "pupeteer": "^0.0.1",
+    "puppeteer": "^24.15.0",
+    "readline-sync": "^1.4.10"
+  }
+}
