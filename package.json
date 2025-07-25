@@ -15,7 +15,6 @@
     "express": "^5.1.0",
     "googleapis": "^154.0.0",
     "pupeteer": "^0.0.1",
-    "puppeteer": "^24.15.0",
-    "readline-sync": "^1.4.10"
+    "puppeteer": "^24.15.0"
   }
 }
