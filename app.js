@@ -1,9 +1,11 @@
 require('dotenv').config();
+const express = require('express');
+const app = express();
+const PORT = process.env.PORT || 3000;
 const { google } = require('googleapis');
 const puppeteer = require('puppeteer');
 const path = require('path');
 const fs = require('fs');
-const readlineSync = require('readline-sync');
 
 // --- Configuración ---
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -48,6 +50,9 @@ function waitForNewFile(downloadPath, filesBefore, timeout = 60000) {
 
 async function uploadFile(filePath, folderId) {
   try {
+    const oauth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
+    oauth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
+    const drive = google.drive({ version: 'v3', auth: oauth2Client });
     const response = await drive.files.create({
       requestBody: {
         name: path.basename(filePath),
@@ -59,23 +64,17 @@ async function uploadFile(filePath, folderId) {
         body: fs.createReadStream(filePath),
       },
     });
-    console.log('Archivo subido con éxito:', response.data);
     fs.unlinkSync(filePath);
-    console.log('Archivo eliminado localmente:', filePath);
+    return { success: true, data: response.data };
   } catch (error) {
-    console.error('Error al subir el archivo:', error);
+    return { success: false, error: error.message };
   }
 }
 
-const oauth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
-oauth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
-const drive = google.drive({ version: 'v3', auth: oauth2Client });
-
-(async () => {
-  const almacenNombre = readlineSync.question('¿Qué almacén desea seleccionar? ').trim().toUpperCase();
+async function ejecutarFlujo(almacenNombre) {
+  almacenNombre = almacenNombre.trim().toUpperCase();
   if (!almacenes[almacenNombre]) {
-    console.error('Error: El almacén ingresado no coincide con ninguno de la lista. No se puede continuar.');
-    process.exit(1);
+    throw new Error('El almacén ingresado no coincide con ninguno de la lista.');
   }
   const { valor: almacenValor, anaquel: anaquelValor } = almacenes[almacenNombre];
 
@@ -125,20 +124,42 @@ const drive = google.drive({ version: 'v3', auth: oauth2Client });
   const nombreArchivoFinal = almacenNombre + '.xlsx';
   const finalFilePath = path.join(descargasDir, nombreArchivoFinal);
   fs.renameSync(downloadedFile, finalFilePath);
-  console.log(`Archivo descargado, renombrado a ${nombreArchivoFinal} y movido a: ${finalFilePath}`);
 
   // --- Subida a Google Drive ---
-  fs.readdir(descargasDir, (err, files) => {
-    if (err) return console.error('No se pudo leer la carpeta de descargas-admintotal:', err);
-    let found = false;
-    files.forEach(file => {
-      const folderId = folderMap[file];
-      if (folderId) {
-        found = true;
-        const filePath = path.join(descargasDir, file);
-        if (fs.lstatSync(filePath).isFile()) uploadFile(filePath, folderId);
-      }
-    });
-    if (!found) console.error('No se encontró ningún archivo válido para subir.');
-  });
-})();
+  let found = false;
+  let result = null;
+  if (folderMap[nombreArchivoFinal]) {
+    found = true;
+    result = await uploadFile(finalFilePath, folderMap[nombreArchivoFinal]);
+  }
+  if (!found) {
+    throw new Error('No se encontró ningún archivo válido para subir.');
+  }
+  if (!result.success) {
+    throw new Error('Error al subir el archivo: ' + result.error);
+  }
+  return { status: 'ok', uploaded: nombreArchivoFinal, driveResponse: result.data };
+}
+
+app.use(express.json());
+
+app.post('/trigger', async (req, res) => {
+  const almacenNombre = req.body.almacen;
+  if (!almacenNombre) {
+    return res.status(400).json({ error: 'Falta el nombre del almacén' });
+  }
+  try {
+    const result = await ejecutarFlujo(almacenNombre);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/', (req, res) => {
+  res.send('API de automatización de descarga y subida a Google Drive está corriendo.');
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor escuchando en puerto ${PORT}`);
+});
