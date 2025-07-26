@@ -50,20 +50,20 @@ function waitForNewFile(downloadPath, filesBefore, timeout = 60000) {
 
 async function uploadFile(filePath, folderId) {
   try {
-    const oauth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
-    oauth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
-    const drive = google.drive({ version: 'v3', auth: oauth2Client });
-    const response = await drive.files.create({
-      requestBody: {
+const oauth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
+oauth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
+const drive = google.drive({ version: 'v3', auth: oauth2Client });
+        const response = await drive.files.create({
+            requestBody: {
         name: path.basename(filePath),
         mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         parents: [folderId],
-      },
-      media: {
+            },
+            media: {
         mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        body: fs.createReadStream(filePath),
-      },
-    });
+                body: fs.createReadStream(filePath),
+            },
+        });
     fs.unlinkSync(filePath);
     return { success: true, data: response.data };
   } catch (error) {
@@ -137,7 +137,7 @@ async function ejecutarFlujo(almacenNombre) {
   }
   if (!result.success) {
     throw new Error('Error al subir el archivo: ' + result.error);
-  }
+    }
   return { status: 'ok', uploaded: nombreArchivoFinal, driveResponse: result.data };
 }
 
