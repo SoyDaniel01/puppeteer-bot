@@ -6,7 +6,8 @@ set -o errexit
 npm install
 
 # Fuerza instalación de Chromium
-npx puppeteer install
+
+npx puppeteer browsers install chrome
 
 # Puedes descomentar esto si tienes una carpeta build
 # npm run build
