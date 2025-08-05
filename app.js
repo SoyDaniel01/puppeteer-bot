@@ -163,3 +163,44 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en puerto ${PORT}`);
 });
+
+// Añade este endpoint a tu app.js para diagnóstico
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+    hasClientId: !!process.env.CLIENT_ID,
+    hasClientSecret: !!process.env.CLIENT_SECRET,
+    hasUserLogin: !!process.env.USER_LOGIN,
+    hasUserPass: !!process.env.USER_PASS,
+    hasRefreshToken: !!process.env.REFRESH_TOKEN,
+    puppeteerVersion: require('puppeteer/package.json').version
+  });
+});
+
+// Endpoint simplificado para probar Puppeteer
+app.post('/test-puppeteer', async (req, res) => {
+  try {
+    console.log('Probando Puppeteer...');
+    const browser = await puppeteer.launch({ 
+      headless: true, 
+      args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu'
+      ] 
+    });
+    
+    const page = await browser.newPage();
+    await page.goto('https://example.com', { timeout: 10000 });
+    const title = await page.title();
+    await browser.close();
+    
+    res.json({ success: true, title, message: 'Puppeteer funciona correctamente' });
+  } catch (error) {
+    console.error('Error en Puppeteer:', error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
