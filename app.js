@@ -14,6 +14,12 @@ const REDIRECT_URI = process.env.REDIRECT_URI;
 const REFRESH_TOKEN = process.env.REFRESH_TOKEN;
 const USER = process.env.USER_LOGIN;
 const PASS = process.env.USER_PASS;
+const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
+
+// Función helper para logs condicionales
+const debugLog = (message) => {
+  if (DEBUG_MODE) console.log(message);
+};
 
 const folderMap = {
   'MATRIZ.xlsx': '1LEQOlRDyZnZ7IbhxMS5CP44IOAOVBbj7',
@@ -83,20 +89,20 @@ function waitForCompleteDownload(downloadPath, filesBefore, timeout = 120000) {
         const downloadingFiles = newFiles.filter(f => f.endsWith('.crdownload'));
         const completedFiles = newFiles.filter(f => !f.endsWith('.crdownload') && !f.endsWith('.tmp'));
         
-        console.log(`Archivos en descarga: ${downloadingFiles.length}, Archivos completos: ${completedFiles.length}`);
+        console.log(`📁 Archivos en descarga: ${downloadingFiles.length}, ✅ Completos: ${completedFiles.length}`);
         
         // Si hay archivos completos, devolver el primero
         if (completedFiles.length > 0) {
           clearInterval(interval);
           const filePath = path.join(downloadPath, completedFiles[0]);
-          console.log(`Descarga completa: ${completedFiles[0]}`);
+          console.log(`✅ Descarga completa: ${completedFiles[0]}`);
           resolve(filePath);
           return;
         }
         
-        // Si hay archivos .crdownload, seguir esperando
-        if (downloadingFiles.length > 0) {
-          console.log(`Esperando descarga completa... ${downloadingFiles[0]}`);
+        // Si hay archivos .crdownload, seguir esperando (solo log cada 10 segundos)
+        if (downloadingFiles.length > 0 && (Date.now() - start) % 10000 < 1000) {
+          console.log(`⏳ Esperando descarga: ${downloadingFiles[0]}`);
         }
         
         // Timeout
@@ -105,7 +111,7 @@ function waitForCompleteDownload(downloadPath, filesBefore, timeout = 120000) {
           
           // Intentar con archivos .crdownload si no hay otra opción
           if (downloadingFiles.length > 0) {
-            console.log('Timeout alcanzado, pero hay archivo .crdownload. Intentando usarlo...');
+            console.log('⚠️ Timeout alcanzado, intentando usar archivo .crdownload...');
             const crdownloadFile = path.join(downloadPath, downloadingFiles[0]);
             
             // Renombrar el archivo .crdownload para intentar usarlo
@@ -243,29 +249,117 @@ async function ejecutarFlujo(almacenNombre) {
   await page.click('a[href="javascript:enviar(\'xls\');"]');
   await page.waitForSelector('.slide-panel.process-center-wrapper.visible', { timeout: 30000 });
   
-  // Esperar a que el proceso termine
-  console.log('Esperando procesamiento del archivo...');
-  await new Promise(r => setTimeout(r, 15000)); // Aumentar tiempo de espera
+  // Esperar a que el proceso termine - aumentar tiempo y verificar estado
+  console.log('⏳ Esperando procesamiento del archivo...');
+  
+  // Esperar hasta que aparezca el enlace de descarga o timeout
+  let processingComplete = false;
+  let waitTime = 0;
+  const maxWaitTime = 60000; // 1 minuto máximo
+  
+  while (!processingComplete && waitTime < maxWaitTime) {
+    await new Promise(r => setTimeout(r, 3000)); // Esperar 3 segundos
+    waitTime += 3000;
+    
+    const hasDownloadLink = await page.evaluate(() => {
+      const panel = document.querySelector('.slide-panel.process-center-wrapper.visible');
+      if (!panel) return false;
+      
+      const downloadLinks = panel.querySelectorAll('a[href*="descargar"]');
+      return downloadLinks.length > 0;
+    });
+    
+    if (hasDownloadLink) {
+      processingComplete = true;
+      console.log(`✅ Procesamiento completado en ${waitTime/1000} segundos`);
+    } else {
+      console.log(`⏳ Esperando... ${waitTime/1000}s`);
+    }
+  }
+  
+  if (!processingComplete) {
+    console.log('⚠️ Timeout en procesamiento, continuando de todos modos...');
+  }
 
   // Verificar archivos antes de la descarga
   const before = new Set(fs.readdirSync(downloadDir));
-  console.log(`Archivos antes de descarga: ${[...before].join(', ')}`);
+  console.log(`📂 Archivos existentes: ${before.size}`);
 
-  console.log('Iniciando descarga...');
-  await page.evaluate(() => {
-    const item = document.querySelector('.slide-panel.process-center-wrapper.visible .content ul li');
-    if (item) {
-      const downloadLink = item.querySelector('a[href^="/admin/procesos/descargar_archivo/"]');
-      if (downloadLink) {
-        downloadLink.click();
-        console.log('Click en enlace de descarga ejecutado');
+  console.log('Buscando enlace de descarga...');
+  
+  // Esperar un poco más y verificar múltiples veces
+  let downloadAttempts = 0;
+  const maxAttempts = 10;
+  let downloadSuccess = false;
+  
+  while (downloadAttempts < maxAttempts && !downloadSuccess) {
+    try {
+      await new Promise(r => setTimeout(r, 2000)); // Esperar 2 segundos entre intentos
+      
+      const result = await page.evaluate(() => {
+        const panel = document.querySelector('.slide-panel.process-center-wrapper.visible');
+        if (!panel) {
+          return { error: 'Panel de proceso no visible' };
+        }
+        
+        const items = panel.querySelectorAll('.content ul li');
+        console.log(`Encontrados ${items.length} elementos en la lista`);
+        
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const downloadLink = item.querySelector('a[href*="descargar_archivo"]');
+          if (downloadLink) {
+            downloadLink.click();
+            return { success: true, message: `Click ejecutado en elemento ${i}` };
+          }
+        }
+        
+        // Si no encuentra con el selector específico, buscar cualquier enlace de descarga
+        const allLinks = panel.querySelectorAll('a');
+        for (let link of allLinks) {
+          if (link.href && link.href.includes('descargar')) {
+            link.click();
+            return { success: true, message: 'Click ejecutado en enlace genérico de descarga' };
+          }
+        }
+        
+        return { 
+          error: 'No se encontró enlace de descarga',
+          itemsFound: items.length,
+          allLinksFound: allLinks.length,
+          panelHTML: panel.innerHTML.substring(0, 500) + '...' // Solo primeros 500 caracteres
+        };
+      });
+      
+      if (result.success) {
+        console.log('✅ ' + result.message);
+        downloadSuccess = true;
       } else {
-        throw new Error('No se encontró el enlace de descarga');
+        console.log(`❌ Intento ${downloadAttempts + 1}/${maxAttempts}: ${result.error}`);
+        if (result.itemsFound !== undefined) {
+          console.log(`📋 Items encontrados: ${result.itemsFound}, Links encontrados: ${result.allLinksFound}`);
+          debugLog('HTML del panel: ' + result.panelHTML);
+        }
+        downloadAttempts++;
       }
-    } else {
-      throw new Error('No se encontró el elemento de descarga');
+      
+    } catch (evalError) {
+      console.log(`❌ Error en intento ${downloadAttempts + 1}: ${evalError.message}`);
+      downloadAttempts++;
     }
-  });
+  }
+  
+  if (!downloadSuccess) {
+    // Último intento: screenshot para debug
+    try {
+      const screenshot = await page.screenshot({ encoding: 'base64' });
+      console.log('📸 Screenshot tomado para debugging (base64 disponible)');
+    } catch (screenshotError) {
+      console.log('No se pudo tomar screenshot:', screenshotError.message);
+    }
+    
+    throw new Error(`No se pudo encontrar el enlace de descarga después de ${maxAttempts} intentos`);
+  }
 
   // Usar la función mejorada de espera
   console.log('Esperando que la descarga termine...');
@@ -487,7 +581,86 @@ app.get('/test-google-drive', async (req, res) => {
   }
 });
 
-// Keep alive endpoint
+// Endpoint para debug del proceso de descarga
+app.post('/debug-download', async (req, res) => {
+  const almacenNombre = (req.body.almacen || 'MATRIZ').trim().toUpperCase();
+  if (!almacenes[almacenNombre]) {
+    return res.status(400).json({ error: 'Almacén no válido' });
+  }
+  
+  const { valor: almacenValor, anaquel: anaquelValor } = almacenes[almacenNombre];
+  
+  try {
+    const browser = await puppeteer.launch({ 
+      headless: true, 
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] 
+    });
+    
+    const page = await browser.newPage();
+    
+    // Ir al sitio
+    await page.goto('https://sanbenito.admintotal.com/admin/inventario/utilerias/inventario_fisico/descarga_archivos/?task_panel=1&first=1', {
+      waitUntil: 'networkidle0', timeout: 60000
+    });
+
+    // Login
+    if (await page.$('input[name="username"]')) {
+      await page.type('input[name="username"]', USER);
+      await page.type('input[name="password"]', PASS);
+      await Promise.all([
+        page.waitForNavigation({ timeout: 30000 }),
+        page.click('button[type="submit"]')
+      ]);
+    }
+
+    // Configurar filtros
+    await page.waitForSelector('input[type="checkbox"]', { timeout: 30000 });
+    await page.click('input[name="usar_posicion"]');
+    await page.click('input[name="con_existencia"]');
+    await page.select('select[name="almacen"]', almacenValor);
+    await page.type('input[name="desde_anaquel"]', anaquelValor);
+    await page.type('input[name="hasta_anaquel"]', anaquelValor);
+    
+    // Generar archivo
+    await page.click('a[href="javascript:enviar(\'xls\');"]');
+    await page.waitForSelector('.slide-panel.process-center-wrapper.visible', { timeout: 30000 });
+    await new Promise(r => setTimeout(r, 15000));
+
+    // Debug del estado de la página
+    const debugInfo = await page.evaluate(() => {
+      const panel = document.querySelector('.slide-panel.process-center-wrapper.visible');
+      if (!panel) return { error: 'Panel no encontrado' };
+      
+      const items = panel.querySelectorAll('.content ul li');
+      const links = panel.querySelectorAll('a');
+      const downloadLinks = panel.querySelectorAll('a[href*="descargar"]');
+      
+      return {
+        panelFound: true,
+        itemsCount: items.length,
+        linksCount: links.length,
+        downloadLinksCount: downloadLinks.length,
+        panelHTML: panel.innerHTML,
+        allLinks: Array.from(links).map(l => ({ href: l.href, text: l.textContent.trim() }))
+      };
+    });
+
+    // Tomar screenshot
+    const screenshot = await page.screenshot({ encoding: 'base64' });
+    
+    await browser.close();
+    
+    res.json({
+      success: true,
+      almacen: almacenNombre,
+      debugInfo,
+      screenshot: `data:image/png;base64,${screenshot}`
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
 app.get('/keep-alive', async (req, res) => {
   try {
     const authClient = await authManager.ensureValidToken();
