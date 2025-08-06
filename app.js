@@ -434,8 +434,9 @@ app.post('/trigger', async (req, res) => {
     console.log('=== INICIANDO FLUJO ===');
     const result = await ejecutarFlujo(almacenNombre);
     console.log('Flujo completado exitosamente:', result);
-    // Responder status ok y fileId
-    res.json({ status: 'ok', fileId: result.driveResponse?.id });
+    const fileId = result.driveResponse?.id;
+    const fileUrl = fileId ? `https://drive.google.com/file/d/${fileId}/view` : null;
+    res.json({ status: 'ok', fileId, fileUrl });
   } catch (err) {
     console.log('=== ERROR EN EL FLUJO ===');
     console.error('Error completo:', err);
