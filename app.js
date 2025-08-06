@@ -392,9 +392,9 @@ async function ejecutarFlujo(almacenNombre) {
     const data = xlsx.utils.sheet_to_json(sheet, { header: 1 });
     console.log('Primeras filas del archivo:', data.slice(0, 5));
     // Buscar índices de encabezados
-    const headers = data[0].map(h => h && h.toString().toLowerCase());
-    console.log('Encabezados detectados:', headers);
-    const idxExistencia = headers.findIndex(h => h && h.includes('existencia'));
+    const headers = data[0].map(h => h && h.toString().toLowerCase().replace(/\s+/g, ''));
+    // Buscar exactamente 'existencia(sistema)' y 'posición'
+    const idxExistencia = headers.findIndex(h => h && h.includes('existencia(sistema)'));
     const idxPosicion = headers.findIndex(h => h && h.includes('posición'));
     console.log('Índice existencia:', idxExistencia, 'Índice posición:', idxPosicion);
     if (idxExistencia !== -1 && idxPosicion !== -1) {
