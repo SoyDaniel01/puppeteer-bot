@@ -394,7 +394,7 @@ async function ejecutarFlujo(almacenNombre) {
     // Buscar índices de encabezados
     const headers = data[0].map(h => h && h.toString().toLowerCase().replace(/\s+/g, ''));
     // Buscar exactamente 'existencia(sistema)' y 'posición'
-    const idxExistencia = headers.findIndex(h => h && h.includes('existencia(sistema)'));
+    const idxExistencia = headers.findIndex(h => h && h.includes('existencia (sistema)'));
     const idxPosicion = headers.findIndex(h => h && h.includes('posición'));
     console.log('Índice existencia:', idxExistencia, 'Índice posición:', idxPosicion);
     if (idxExistencia !== -1 && idxPosicion !== -1) {
