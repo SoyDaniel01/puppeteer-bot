@@ -465,7 +465,7 @@ app.post('/trigger', async (req, res) => {
     console.log('=== INICIANDO FLUJO ===');
     const result = await ejecutarFlujo(almacenNombre);
     console.log('Flujo completado exitosamente:', result);
-    res.json({ status: 'ok', tabla: result.tabla });
+    res.json(result.tabla);
   } catch (err) {
     console.log('=== ERROR EN EL FLUJO ===');
     console.error('Error completo:', err);
