@@ -12,6 +12,7 @@
   "type": "commonjs",
   "dependencies": {
     "dotenv": "^17.2.1",
+    "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "googleapis": "^154.0.0",
     "node": "^18.0.0",

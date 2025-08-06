@@ -386,14 +386,19 @@ async function ejecutarFlujo(almacenNombre) {
   // Leer el archivo Excel y extraer columnas 'existencia' y 'posición'
   let tabla = [];
   try {
+    console.log('Leyendo archivo Excel:', finalFilePath);
     const workbook = xlsx.readFile(finalFilePath);
     const sheetName = workbook.SheetNames[0];
+    console.log('Nombre de la hoja:', sheetName);
     const sheet = workbook.Sheets[sheetName];
     const data = xlsx.utils.sheet_to_json(sheet, { header: 1 });
+    console.log('Primeras filas del archivo:', data.slice(0, 5));
     // Buscar índices de encabezados
     const headers = data[0].map(h => h && h.toString().toLowerCase());
+    console.log('Encabezados detectados:', headers);
     const idxExistencia = headers.findIndex(h => h && h.includes('existencia'));
     const idxPosicion = headers.findIndex(h => h && h.includes('posición'));
+    console.log('Índice existencia:', idxExistencia, 'Índice posición:', idxPosicion);
     if (idxExistencia !== -1 && idxPosicion !== -1) {
       for (let i = 1; i < data.length; i++) {
         tabla.push({
@@ -401,6 +406,9 @@ async function ejecutarFlujo(almacenNombre) {
           posicion: data[i][idxPosicion]
         });
       }
+      console.log('Ejemplo de datos extraídos:', tabla.slice(0, 5));
+    } else {
+      console.log('No se encontraron los encabezados requeridos.');
     }
   } catch (e) {
     console.log('No se pudo leer el archivo Excel o extraer columnas:', e.message);
