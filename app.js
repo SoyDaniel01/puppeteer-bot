@@ -6,6 +6,7 @@ const { google } = require('googleapis');
 const puppeteer = require('puppeteer');
 const path = require('path');
 const fs = require('fs');
+const xlsx = require('xlsx');
 
 // --- Configuración ---
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -374,12 +375,36 @@ async function ejecutarFlujo(almacenNombre) {
     fs.mkdirSync(descargasDir, { recursive: true });
     console.log(`Directorio final creado: ${descargasDir}`);
   }
-  
-  const nombreArchivoFinal = almacenNombre + '.xlsx';
+  // Obtener fecha actual en formato YYYY-MM-DD
+  const fechaHoy = new Date().toISOString().slice(0, 10);
+  const nombreArchivoFinal = `${almacenNombre}_${fechaHoy}.xlsx`;
   const finalFilePath = path.join(descargasDir, nombreArchivoFinal);
-  
+
   console.log(`Moviendo archivo de ${downloadedFile} a ${finalFilePath}`);
   fs.renameSync(downloadedFile, finalFilePath);
+
+  // Leer el archivo Excel y extraer columnas 'existencia' y 'posición'
+  let tabla = [];
+  try {
+    const workbook = xlsx.readFile(finalFilePath);
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const data = xlsx.utils.sheet_to_json(sheet, { header: 1 });
+    // Buscar índices de encabezados
+    const headers = data[0].map(h => h && h.toString().toLowerCase());
+    const idxExistencia = headers.findIndex(h => h && h.includes('existencia'));
+    const idxPosicion = headers.findIndex(h => h && h.includes('posición'));
+    if (idxExistencia !== -1 && idxPosicion !== -1) {
+      for (let i = 1; i < data.length; i++) {
+        tabla.push({
+          existencia: data[i][idxExistencia],
+          posicion: data[i][idxPosicion]
+        });
+      }
+    }
+  } catch (e) {
+    console.log('No se pudo leer el archivo Excel o extraer columnas:', e.message);
+  }
 
   // --- Subida a Google Drive ---
   console.log('Iniciando subida a Google Drive...');
@@ -404,7 +429,7 @@ async function ejecutarFlujo(almacenNombre) {
     status: 'ok', 
     uploaded: nombreArchivoFinal, 
     driveResponse: result.data,
-    message: `Archivo ${nombreArchivoFinal} procesado y subido exitosamente`
+    tabla
   };
 }
 
@@ -434,9 +459,7 @@ app.post('/trigger', async (req, res) => {
     console.log('=== INICIANDO FLUJO ===');
     const result = await ejecutarFlujo(almacenNombre);
     console.log('Flujo completado exitosamente:', result);
-    const fileId = result.driveResponse?.id;
-    const fileUrl = fileId ? `https://docs.google.com/spreadsheets/d/${fileId}/edit?usp=drive_web&ouid=114902561671645682978&rtpof=true` : null;
-    res.json({ status: 'ok', fileId, fileUrl });
+    res.json({ status: 'ok', tabla: result.tabla });
   } catch (err) {
     console.log('=== ERROR EN EL FLUJO ===');
     console.error('Error completo:', err);
