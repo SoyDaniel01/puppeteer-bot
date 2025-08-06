@@ -375,9 +375,7 @@ async function ejecutarFlujo(almacenNombre) {
     fs.mkdirSync(descargasDir, { recursive: true });
     console.log(`Directorio final creado: ${descargasDir}`);
   }
-  // Obtener fecha actual en formato YYYY-MM-DD
-  const fechaHoy = new Date().toISOString().slice(0, 10);
-  const nombreArchivoFinal = `${almacenNombre}_${fechaHoy}.xlsx`;
+  const nombreArchivoFinal = almacenNombre + '.xlsx';
   const finalFilePath = path.join(descargasDir, nombreArchivoFinal);
 
   console.log(`Moviendo archivo de ${downloadedFile} a ${finalFilePath}`);
