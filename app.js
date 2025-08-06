@@ -421,8 +421,7 @@ app.post('/trigger', async (req, res) => {
   
   if (!almacenNombre) {
     console.log('ERROR: Falta el nombre del almacén');
-    // Siempre responder status ok
-    return res.json({ status: 'ok' });
+    return res.status(400).json({ status: 'error' });
   }
   
   try {
@@ -435,14 +434,13 @@ app.post('/trigger', async (req, res) => {
     console.log('=== INICIANDO FLUJO ===');
     const result = await ejecutarFlujo(almacenNombre);
     console.log('Flujo completado exitosamente:', result);
-    // Siempre responder status ok
-    res.json({ status: 'ok' });
+    // Responder status ok y fileId
+    res.json({ status: 'ok', fileId: result.driveResponse?.id });
   } catch (err) {
     console.log('=== ERROR EN EL FLUJO ===');
     console.error('Error completo:', err);
     console.error('Stack trace:', err.stack);
-    // Siempre responder status ok
-    res.json({ status: 'ok' });
+    res.status(500).json({ status: 'error' });
   }
 });
 
