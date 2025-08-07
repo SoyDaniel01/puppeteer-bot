@@ -603,9 +603,9 @@ app.post('/debug-download', async (req, res) => {
 
     // Configurar filtros
     await page.waitForSelector('input[type="checkbox"]', { timeout: 30000 });
-    await page.click('input[name="usar_posicion"]');
-    await page.click('input[name="con_existencia"]');
-    await page.click('input[name="mostrar_existencias"]');
+    await page.$eval('input[name="usar_posicion"]', el => { if (el.checked) el.click(); });
+    await page.$eval('input[name="con_existencia"]', el => { if (el.checked) el.click(); });
+    await page.$eval('input[name="mostrar_existencias"]', el => { if (!el.checked) el.click(); });
     await page.select('select[name="almacen"]', almacenValor);
     await page.type('input[name="desde_anaquel"]', anaquelValor);
     await page.type('input[name="hasta_anaquel"]', anaquelValor);
