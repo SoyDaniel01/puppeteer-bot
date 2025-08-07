@@ -163,7 +163,7 @@ async function ejecutarFlujo(almacenNombre) {
 
   // --- Descarga con Puppeteer ---
   const browser = await puppeteer.launch({ 
-    headless: true, // Activar headless de nuevo
+    headless: false, // Desactivado para ver el navegador
     args: [
       '--no-sandbox', 
       '--disable-setuid-sandbox',
@@ -220,7 +220,7 @@ async function ejecutarFlujo(almacenNombre) {
   
   console.log('Iniciando generación de archivo...');
   await page.click('a[href="javascript:enviar(\'xls\');"]');
-  await new Promise(r => setTimeout(r, 20000)); // Espera 20 segundos para que se genere el archivo
+  await new Promise(r => setTimeout(r, 60000)); // Espera 60 segundos para que se genere el archivo
   await page.waitForSelector('.slide-panel.process-center-wrapper.visible', { timeout: 30000 });
   
   // Esperar a que el proceso termine - aumentar tiempo y verificar estado
@@ -502,7 +502,7 @@ app.post('/test-puppeteer', async (req, res) => {
   try {
     console.log('Probando Puppeteer...');
     const browser = await puppeteer.launch({ 
-      headless: true, 
+      headless: false, 
       args: [
         '--no-sandbox', 
         '--disable-setuid-sandbox',
