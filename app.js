@@ -162,14 +162,18 @@ async function ejecutarFlujo(almacenNombre) {
   console.log(`Almacén valor: ${almacenValor}, Anaquel: ${anaquelValor}`);
 
   // --- Descarga con Puppeteer ---
-  const browser = await puppeteer.launch({ 
-    headless: false, // Desactivado para ver el navegador
+  const browser = await puppeteer.launch({
+    headless: true,
     args: [
-      '--no-sandbox', 
+      '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-gpu'
-    ] 
+      '--disable-gpu',
+      '--disable-software-rasterizer',
+      '--single-process',
+      '--no-zygote',
+      '--headless=new'
+    ]
   });
   
   const page = await browser.newPage();
