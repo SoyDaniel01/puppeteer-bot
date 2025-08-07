@@ -17,7 +17,7 @@ const USER = process.env.USER_LOGIN;
 const PASS = process.env.USER_PASS;
 const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
 
-// Función helper para logs condicionales
+// Helper para logs condicionales
 const debugLog = (message) => {
   if (DEBUG_MODE) console.log(message);
 };
@@ -48,22 +48,17 @@ class GoogleAuthManager {
 
   async ensureValidToken() {
     try {
-      // Si el token fue refrescado hace menos de 50 minutos, no hacer nada
       if (this.lastRefresh && (Date.now() - this.lastRefresh) < 50 * 60 * 1000) {
         return this.oauth2Client;
       }
-
       console.log('Refrescando access token...');
       const { credentials } = await this.oauth2Client.refreshAccessToken();
       this.oauth2Client.setCredentials(credentials);
       this.lastRefresh = Date.now();
-      
       console.log('Token refrescado exitosamente');
       return this.oauth2Client;
-      
     } catch (error) {
       console.error('Error refrescando token:', error.message);
-      
       if (error.message.includes('invalid_grant')) {
         throw new Error('REFRESH_TOKEN inválido o expirado. Necesitas generar uno nuevo.');
       }
@@ -72,82 +67,59 @@ class GoogleAuthManager {
   }
 }
 
-// Instancia global del manejador de autenticación
 const authManager = new GoogleAuthManager();
 
-// --- Función mejorada para esperar descarga completa ---
-function waitForCompleteDownload(downloadPath, filesBefore, timeout = 120000) {
-  return new Promise((resolve, reject) => {
-    const start = Date.now();
-    const interval = setInterval(() => {
-      try {
-        const filesNow = fs.readdirSync(downloadPath);
-        
-        // Buscar archivos nuevos (que no estaban antes)
-        const newFiles = filesNow.filter(f => !filesBefore.has(f));
-        
-        // Filtrar archivos .crdownload (descarga en progreso)
-        const downloadingFiles = newFiles.filter(f => f.endsWith('.crdownload'));
-        const completedFiles = newFiles.filter(f => !f.endsWith('.crdownload') && !f.endsWith('.tmp'));
-        
-        console.log(`📁 Archivos en descarga: ${downloadingFiles.length}, ✅ Completos: ${completedFiles.length}`);
-        
-        // Si hay archivos completos, devolver el primero
-        if (completedFiles.length > 0) {
-          clearInterval(interval);
-          const filePath = path.join(downloadPath, completedFiles[0]);
-          console.log(`✅ Descarga completa: ${completedFiles[0]}`);
-          resolve(filePath);
-          return;
-        }
-        
-        // Si hay archivos .crdownload, seguir esperando (solo log cada 10 segundos)
-        if (downloadingFiles.length > 0 && (Date.now() - start) % 10000 < 1000) {
-          console.log(`⏳ Esperando descarga: ${downloadingFiles[0]}`);
-        }
-        
-        // Timeout
-        if (Date.now() - start > timeout) {
-          clearInterval(interval);
-          
-          // Intentar con archivos .crdownload si no hay otra opción
-          if (downloadingFiles.length > 0) {
-            console.log('⚠️ Timeout alcanzado, intentando usar archivo .crdownload...');
-            const crdownloadFile = path.join(downloadPath, downloadingFiles[0]);
-            
-            // Renombrar el archivo .crdownload para intentar usarlo
-            const finalName = downloadingFiles[0].replace('.crdownload', '');
-            const finalPath = path.join(downloadPath, finalName);
-            
-            try {
-              fs.renameSync(crdownloadFile, finalPath);
-              resolve(finalPath);
-            } catch (renameError) {
-              reject(new Error(`Timeout y error al renombrar archivo .crdownload: ${renameError.message}`));
-            }
-          } else {
-            reject(new Error(`Timeout esperando descarga completa (${timeout}ms)`));
-          }
-        }
-      } catch (error) {
+// --- Utilidad para esperar descarga completa ---
+const waitForCompleteDownload = (downloadPath, filesBefore, timeout = 120000) => new Promise((resolve, reject) => {
+  const start = Date.now();
+  const interval = setInterval(() => {
+    try {
+      const filesNow = fs.readdirSync(downloadPath);
+      const newFiles = filesNow.filter(f => !filesBefore.has(f));
+      const downloadingFiles = newFiles.filter(f => f.endsWith('.crdownload'));
+      const completedFiles = newFiles.filter(f => !f.endsWith('.crdownload') && !f.endsWith('.tmp'));
+      console.log(`📁 Archivos en descarga: ${downloadingFiles.length}, ✅ Completos: ${completedFiles.length}`);
+      if (completedFiles.length > 0) {
         clearInterval(interval);
-        reject(new Error(`Error verificando archivos: ${error.message}`));
+        const filePath = path.join(downloadPath, completedFiles[0]);
+        console.log(`✅ Descarga completa: ${completedFiles[0]}`);
+        resolve(filePath);
+        return;
       }
-    }, 1000); // Verificar cada segundo
-  });
-}
+      if (downloadingFiles.length > 0 && (Date.now() - start) % 10000 < 1000) {
+        console.log(`⏳ Esperando descarga: ${downloadingFiles[0]}`);
+      }
+      if (Date.now() - start > timeout) {
+        clearInterval(interval);
+        if (downloadingFiles.length > 0) {
+          console.log('⚠️ Timeout alcanzado, intentando usar archivo .crdownload...');
+          const crdownloadFile = path.join(downloadPath, downloadingFiles[0]);
+          const finalName = downloadingFiles[0].replace('.crdownload', '');
+          const finalPath = path.join(downloadPath, finalName);
+          try {
+            fs.renameSync(crdownloadFile, finalPath);
+            resolve(finalPath);
+          } catch (renameError) {
+            reject(new Error(`Timeout y error al renombrar archivo .crdownload: ${renameError.message}`));
+          }
+        } else {
+          reject(new Error(`Timeout esperando descarga completa (${timeout}ms)`));
+        }
+      }
+    } catch (error) {
+      clearInterval(interval);
+      reject(new Error(`Error verificando archivos: ${error.message}`));
+    }
+  }, 1000);
+});
 
-// --- Función mejorada de upload ---
-async function uploadFile(filePath, folderId) {
+// --- Utilidad para subir archivo a Google Drive ---
+const uploadFile = async (filePath, folderId) => {
   try {
     console.log('Iniciando subida a Google Drive...');
-    
-    // Asegurar que tenemos token válido
     const oauth2Client = await authManager.ensureValidToken();
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
-    
     console.log(`Subiendo archivo: ${path.basename(filePath)} a carpeta: ${folderId}`);
-    
     const response = await drive.files.create({
       requestBody: {
         name: path.basename(filePath),
@@ -159,17 +131,12 @@ async function uploadFile(filePath, folderId) {
         body: fs.createReadStream(filePath),
       },
     });
-    
     console.log('Archivo subido exitosamente:', response.data.id);
     fs.unlinkSync(filePath);
     return { success: true, data: response.data };
-    
   } catch (error) {
     console.error('Error detallado en uploadFile:', error);
-    
-    // Mensajes de error más específicos
     let errorMessage = error.message;
-    
     if (error.code === 403) {
       errorMessage = 'Sin permisos para acceder a Google Drive. Verifica los scopes.';
     } else if (error.code === 404) {
@@ -179,10 +146,9 @@ async function uploadFile(filePath, folderId) {
     } else if (error.code === 'ENOENT') {
       errorMessage = 'Archivo no encontrado para subir.';
     }
-    
     return { success: false, error: errorMessage };
   }
-}
+};
 
 // --- Función principal mejorada ---
 async function ejecutarFlujo(almacenNombre) {
