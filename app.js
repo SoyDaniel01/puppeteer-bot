@@ -347,7 +347,7 @@ async function ejecutarFlujo(almacenNombre) {
   console.log(`Moviendo archivo de ${downloadedFile} a ${finalFilePath}`);
   fs.renameSync(downloadedFile, finalFilePath);
 
-  // Leer el archivo Excel y extraer columnas 'existencia' y 'posición'
+  // Leer el archivo Excel y extraer columnas 'existencia' y 'posición' por índice (G y N)
   let tabla = [];
   try {
     console.log('Leyendo archivo Excel:', finalFilePath);
@@ -357,23 +357,14 @@ async function ejecutarFlujo(almacenNombre) {
     const sheet = workbook.Sheets[sheetName];
     const data = xlsx.utils.sheet_to_json(sheet, { header: 1 });
     console.log('Primeras filas del archivo:', data.slice(0, 5));
-    // Buscar índices de encabezados
-    const headers = data[0].map(h => h && h.toString().toLowerCase().replace(/\s+/g, ''));
-    // Buscar exactamente 'existencia(sistema)' y 'posición'
-    const idxExistencia = headers.findIndex(h => h && h.includes('existencia (sistema)'));
-    const idxPosicion = headers.findIndex(h => h && h.includes('posición'));
-    console.log('Índice existencia:', idxExistencia, 'Índice posición:', idxPosicion);
-    if (idxExistencia !== -1 && idxPosicion !== -1) {
-      for (let i = 1; i < data.length; i++) {
-        tabla.push({
-          existencia: data[i][idxExistencia],
-          posicion: data[i][idxPosicion]
-        });
-      }
-      console.log('Ejemplo de datos extraídos:', tabla.slice(0, 5));
-    } else {
-      console.log('No se encontraron los encabezados requeridos.');
+    // Extraer columna G (índice 6) y N (índice 13)
+    for (let i = 1; i < data.length; i++) {
+      tabla.push({
+        posicion: data[i][6], // Columna G
+        existencia: data[i][13] // Columna N
+      });
     }
+    console.log('Ejemplo de datos extraídos:', tabla.slice(0, 5));
   } catch (e) {
     console.log('No se pudo leer el archivo Excel o extraer columnas:', e.message);
   }
