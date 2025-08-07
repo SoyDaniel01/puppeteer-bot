@@ -163,7 +163,7 @@ async function ejecutarFlujo(almacenNombre) {
 
   // --- Descarga con Puppeteer ---
   const browser = await puppeteer.launch({ 
-    headless: true, 
+    headless: true, // Activar headless de nuevo
     args: [
       '--no-sandbox', 
       '--disable-setuid-sandbox',
@@ -202,18 +202,25 @@ async function ejecutarFlujo(almacenNombre) {
       page.click('button[type="submit"]')
     ]);
     console.log('Login exitoso');
+    await new Promise(r => setTimeout(r, 5000)); // Espera 5 segundos después del login
   }
 
   console.log('Configurando filtros de descarga...');
   await page.waitForSelector('input[type="checkbox"]', { timeout: 30000 });
-  await page.click('input[name="usar_posicion"]');
-  await page.click('input[name="con_existencia"]');
+  // Asegurar que 'usar_posicion' esté desactivado
+  await page.$eval('input[name="usar_posicion"]', el => { if (el.checked) el.click(); });
+  // Asegurar que 'con_existencia' esté desactivado
+  await page.$eval('input[name="con_existencia"]', el => { if (el.checked) el.click(); });
+  // Asegurar que 'mostrar_existencias' esté activado
+  await page.$eval('input[name="mostrar_existencias"]', el => { if (!el.checked) el.click(); });
+  // (Timeout después de los checkboxes eliminado)
   await page.select('select[name="almacen"]', almacenValor);
   await page.type('input[name="desde_anaquel"]', anaquelValor);
   await page.type('input[name="hasta_anaquel"]', anaquelValor);
   
   console.log('Iniciando generación de archivo...');
   await page.click('a[href="javascript:enviar(\'xls\');"]');
+  await new Promise(r => setTimeout(r, 20000)); // Espera 20 segundos para que se genere el archivo
   await page.waitForSelector('.slide-panel.process-center-wrapper.visible', { timeout: 30000 });
   
   // Esperar a que el proceso termine - aumentar tiempo y verificar estado
