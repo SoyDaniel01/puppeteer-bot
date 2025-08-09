@@ -224,7 +224,7 @@ async function ejecutarFlujo(almacenNombre) {
   
   console.log('Iniciando generación de archivo...');
   await page.click('a[href="javascript:enviar(\'xls\');"]');
-  await new Promise(r => setTimeout(r, 60000)); // Espera 60 segundos para que se genere el archivo
+  await new Promise(r => setTimeout(r, 1200000)); // Espera 60 segundos para que se genere el archivo
   await page.waitForSelector('.slide-panel.process-center-wrapper.visible', { timeout: 30000 });
   
   // Esperar a que el proceso termine - aumentar tiempo y verificar estado
