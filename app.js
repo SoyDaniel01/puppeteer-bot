@@ -453,293 +453,203 @@ async function ejecutarFlujo(almacenNombre) {
   await page.click('a[href="javascript:enviar(\'xls\');"]');
   console.log('✅ Segundo click ejecutado');
   
-  // Esperar 60 segundos para que se genere el archivo
-  console.log('⏳ Esperando 60 segundos para generación del archivo...');
-  await new Promise(r => setTimeout(r, 60000)); // Espera 60 segundos para que se genere el archivo
-  console.log('✅ Tiempo de espera completado');
+  // Verificar si realmente se inició la descarga
+  console.log('🔍 Verificando si realmente se inició la descarga...');
   
-  // Debugging: verificar qué hay en la página después de los clicks
-  console.log('🔍 Verificando estado de la página después de los clicks...');
+  let downloadStarted = false;
+  let attempts = 0;
+  const maxAttempts = 20; // 20 intentos = 1 minuto total
   
-  // Verificación básica del estado de la página
-  console.log('📄 Verificando URL y título de la página...');
-  const basicPageInfo = await page.evaluate(() => {
-    return {
-      url: window.location.href,
-      title: document.title,
-      bodyTextLength: document.body ? document.body.innerText.length : 0
-    };
-  });
-  console.log('📊 Información básica de la página:', basicPageInfo);
-  
-  let pageState;
-  try {
-    pageState = await page.evaluate(() => {
-      // Buscar el selector original
-      const originalSelector = document.querySelector('.slide-panel.process-center-wrapper.visible');
-      
-      // Buscar selectores alternativos que podrían indicar el estado
-      const alternativeSelectors = {
-        slidePanel: document.querySelector('.slide-panel'),
-        processCenter: document.querySelector('.process-center-wrapper'),
-        visibleElements: document.querySelectorAll('[class*="visible"]'),
-        processElements: document.querySelectorAll('[class*="process"]'),
-        downloadElements: document.querySelectorAll('[class*="download"]'),
-        progressElements: document.querySelectorAll('[class*="progress"]')
-      };
-      
-      // Verificar si hay algún popup o modal activo
-      const activeModals = document.querySelectorAll('.modal[style*="display: block"], .modal.show');
-      const activePopups = document.querySelectorAll('.popup, .overlay');
-      
-      return {
-        originalSelectorFound: !!originalSelector,
-        alternativeSelectors,
-        activeModals: activeModals.length,
-        activePopups: activePopups.length,
-        pageTitle: document.title,
-        bodyText: document.body.innerText.substring(0, 500) + '...',
-        url: window.location.href
-      };
-    });
+  while (!downloadStarted && attempts < maxAttempts) {
+    attempts++;
+    console.log(`🔍 Intento ${attempts}/${maxAttempts}: Verificando estado de la página...`);
     
-    // Verificar que pageState sea válido
-    if (!pageState || typeof pageState !== 'object') {
-      console.log('⚠️ page.evaluate retornó valor inválido, usando valores por defecto');
-      pageState = {
-        originalSelectorFound: false,
-        alternativeSelectors: {},
-        activeModals: 0,
-        activePopups: 0,
-        pageTitle: 'No disponible',
-        bodyText: 'No disponible',
-        url: 'No disponible'
-      };
-    }
-    
-    console.log('📊 Estado de la página después de los clicks:', pageState);
-    
-  } catch (evaluateError) {
-    console.log('❌ Error en page.evaluate, usando valores por defecto:', evaluateError.message);
-    pageState = {
-      originalSelectorFound: false,
-      alternativeSelectors: {},
-      activeModals: 0,
-      activePopups: 0,
-      pageTitle: 'Error en evaluación',
-      bodyText: 'Error en evaluación',
-      url: 'Error en evaluación'
-    };
-  }
-  
-  // Verificación adicional: buscar cualquier enlace de descarga en la página
-  console.log('🔍 Buscando enlaces de descarga en la página...');
-  try {
-    const downloadLinksInfo = await page.evaluate(() => {
-      const allLinks = document.querySelectorAll('a');
-      const downloadLinks = Array.from(allLinks).filter(link => {
-        const href = link.href || '';
-        const text = link.textContent || '';
-        return href.includes('descargar') || href.includes('download') || 
-               text.toLowerCase().includes('descargar') || text.toLowerCase().includes('download');
-      });
-      
-      return {
-        totalLinks: allLinks.length,
-        downloadLinks: downloadLinks.length,
-        downloadLinkTexts: downloadLinks.map(link => ({
-          href: link.href,
-          text: link.textContent.trim()
-        }))
-      };
-    });
-    
-    console.log('📊 Información de enlaces de descarga:', downloadLinksInfo);
-    
-  } catch (linkError) {
-    console.log('❌ Error buscando enlaces de descarga:', linkError.message);
-  }
-  
-  // Continuar directamente con la búsqueda del enlace de descarga
-  console.log('🚀 Continuando con la búsqueda del enlace de descarga...');
-  
-  // Esperar a que el proceso termine - aumentar tiempo y verificar estado
-  console.log('⏳ Esperando procesamiento del archivo...');
-  
-  // Esperar hasta que aparezca el enlace de descarga o timeout
-  let processingComplete = false;
-  let waitTime = 0;
-  const maxWaitTime = 60000; // 1 minuto máximo
-  
-  console.log('🔄 Iniciando búsqueda del enlace de descarga...');
-  
-  while (!processingComplete && waitTime < maxWaitTime) {
-    console.log(`⏱️ Intento ${Math.floor(waitTime/3000) + 1}: Esperando 3 segundos...`);
-    await new Promise(r => setTimeout(r, 3000)); // Esperar 3 segundos
-    waitTime += 3000;
-    
-    console.log(`🔍 Verificando enlace de descarga (${waitTime/1000}s)...`);
-    const hasDownloadLink = await page.evaluate(() => {
-      const panel = document.querySelector('.slide-panel.process-center-wrapper.visible');
-      if (!panel) return false;
-      
-      const downloadLinks = panel.querySelectorAll('a[href*="descargar"]');
-      console.log(`Encontrados ${downloadLinks.length} enlaces de descarga`);
-      return downloadLinks.length > 0;
-    });
-    
-    if (hasDownloadLink) {
-      processingComplete = true;
-      console.log(`✅ Procesamiento completado en ${waitTime/1000} segundos`);
-    } else {
-      console.log(`❌ Intento ${Math.floor(waitTime/3000)}: No se encontró enlace de descarga`);
-      
-      // Debugging adicional: verificar estado de la página
-      const debugInfo = await page.evaluate(() => {
-        const panel = document.querySelector('.slide-panel.process-center-wrapper.visible');
-        if (!panel) return { error: 'Panel no visible' };
-        
-        const items = panel.querySelectorAll('.content ul li');
-        const links = panel.querySelectorAll('a');
-        const downloadLinks = panel.querySelectorAll('a[href*="descargar"]');
-        
-        return {
-          itemsCount: items.length,
-          linksCount: links.length,
-          downloadLinksCount: downloadLinks.length,
-          panelVisible: true
-        };
-      });
-      
-      console.log(`📊 Debug info:`, debugInfo);
-    }
-  }
-  
-  if (!processingComplete) {
-    console.log('⚠️ Timeout en procesamiento, continuando de todos modos...');
-  }
-
-  // Verificar archivos antes de la descarga
-  const before = new Set(fs.readdirSync(downloadDir));
-  console.log(`📂 Archivos existentes: ${before.size}`);
-
-  console.log('Buscando enlace de descarga...');
-  
-  // Esperar un poco más y verificar múltiples veces
-  let downloadAttempts = 0;
-  const maxAttempts = 10;
-  let downloadSuccess = false;
-  
-  console.log('🎯 Iniciando búsqueda final del enlace de descarga...');
-  
-  while (downloadAttempts < maxAttempts && !downloadSuccess) {
     try {
-      console.log(`📥 Intento ${downloadAttempts + 1}/${maxAttempts}: Esperando 2 segundos...`);
-      await new Promise(r => setTimeout(r, 2000)); // Esperar 2 segundos entre intentos
-      
-      console.log(`🔍 Verificando enlaces de descarga...`);
-      const result = await page.evaluate(() => {
-        const panel = document.querySelector('.slide-panel.process-center-wrapper.visible');
-        if (!panel) {
-          return { error: 'Panel de proceso no visible' };
-        }
-        
-        const items = panel.querySelectorAll('.content ul li');
-        console.log(`Encontrados ${items.length} elementos en la lista`);
-        
-        for (let i = 0; i < items.length; i++) {
-          const item = items[i];
-          const downloadLink = item.querySelector('a[href*="descargar_archivo"]');
-          if (downloadLink) {
-            downloadLink.click();
-            return { success: true, message: `Click ejecutado en elemento ${i}` };
-          }
-        }
-        
-        // Si no encuentra con el selector específico, buscar cualquier enlace de descarga
-        const allLinks = panel.querySelectorAll('a');
-        for (let link of allLinks) {
-          if (link.href && link.href.includes('descargar')) {
-            link.click();
-            return { success: true, message: 'Click ejecutado en enlace genérico de descarga' };
-          }
-        }
-        
-        return { 
-          error: 'No se encontró enlace de descarga',
-          itemsFound: items.length,
-          allLinksFound: allLinks.length,
-          panelHTML: panel.innerHTML.substring(0, 500) + '...' // Solo primeros 500 caracteres
+      const pageStatus = await page.evaluate(() => {
+        // Buscar indicadores de que se está procesando la descarga
+        const processingIndicators = {
+          // Buscar texto que indique procesamiento
+          hasProcessingText: document.body.innerText.toLowerCase().includes('procesando') || 
+                            document.body.innerText.toLowerCase().includes('generando') ||
+                            document.body.innerText.toLowerCase().includes('descargando') ||
+                            document.body.innerText.toLowerCase().includes('preparando'),
+          
+          // Buscar elementos de carga
+          hasLoadingElements: document.querySelectorAll('[class*="loading"], [class*="spinner"], [class*="progress"], [class*="wait"]').length > 0,
+          
+          // Buscar enlaces de descarga activos
+          hasDownloadLinks: document.querySelectorAll('a[href*="descargar"], a[href*="download"]').length > 0,
+          
+          // Buscar paneles de proceso
+          hasProcessPanel: !!document.querySelector('.slide-panel, .process-center-wrapper, [class*="process"], [class*="panel"]'),
+          
+          // Verificar si hay algún modal o popup activo
+          hasActiveModals: document.querySelectorAll('.modal[style*="display: block"], .modal.show, .popup, .overlay').length > 0,
+          
+          // Información básica de la página
+          pageTitle: document.title,
+          url: window.location.href,
+          bodyTextLength: document.body.innerText.length
         };
+        
+        return processingIndicators;
       });
       
-      if (result.success) {
-        console.log('✅ ' + result.message);
-        downloadSuccess = true;
-        
-        // Debugging adicional: verificar si realmente se inició la descarga
-        console.log('🔍 Verificando si se inició la descarga...');
-        await new Promise(r => setTimeout(r, 5000)); // Esperar 5 segundos
-        
-        // Verificar si hay archivos .crdownload o descargas en progreso
-        const downloadStatus = await page.evaluate(() => {
-          // Verificar si hay algún indicador de descarga en la página
-          const downloadIndicators = document.querySelectorAll('[class*="download"], [class*="descarga"], [class*="progress"], [class*="bar"]');
-          const hasDownloadText = document.body.innerText.toLowerCase().includes('descargando') || 
-                                  document.body.innerText.toLowerCase().includes('downloading') ||
-                                  document.body.innerText.toLowerCase().includes('procesando') ||
-                                  document.body.innerText.toLowerCase().includes('generando');
-          
-          return {
-            indicators: downloadIndicators.length,
-            hasDownloadText: hasDownloadText,
-            pageText: document.body.innerText.substring(0, 500) + '...'
-          };
-        });
-        console.log('📊 Estado de descarga en página:', downloadStatus);
-        
-        // Verificar configuración de descarga de Puppeteer
-        console.log('🔧 Verificando configuración de descarga de Puppeteer...');
-        console.log('📁 Directorio de descarga configurado:', downloadDir);
-        console.log('📂 Archivos en directorio antes de esperar:', fs.readdirSync(downloadDir));
-        
-      } else {
-        console.log(`❌ Intento ${downloadAttempts + 1}/${maxAttempts}: ${result.error}`);
-        if (result.itemsFound !== undefined) {
-          console.log(`📋 Items encontrados: ${result.itemsFound}, Links encontrados: ${result.allLinksFound}`);
-          console.log('🔍 HTML del panel:', result.panelHTML);
-        }
-        downloadAttempts++;
+      console.log(`📊 Estado de la página (intento ${attempts}):`, pageStatus);
+      
+      // Si encontramos indicadores de procesamiento, la descarga se inició
+      if (pageStatus.hasProcessingText || pageStatus.hasLoadingElements || pageStatus.hasDownloadLinks || pageStatus.hasProcessPanel) {
+        downloadStarted = true;
+        console.log('✅ ¡Descarga iniciada! Se encontraron indicadores de procesamiento');
+        break;
       }
       
-    } catch (evalError) {
-      console.log(`❌ Error en intento ${downloadAttempts + 1}: ${evalError.message}`);
-      downloadAttempts++;
+      // Si hay modales activos, esperar un poco más
+      if (pageStatus.hasActiveModals) {
+        console.log('⏳ Hay modales activos, esperando que se procesen...');
+        await new Promise(r => setTimeout(r, 3000));
+        continue;
+      }
+      
+      // Si no hay indicadores, esperar y verificar nuevamente
+      console.log('⏳ No se encontraron indicadores de procesamiento, esperando 3 segundos...');
+      await new Promise(r => setTimeout(r, 3000));
+      
+    } catch (error) {
+      console.log(`❌ Error verificando estado (intento ${attempts}):`, error.message);
+      await new Promise(r => setTimeout(r, 3000));
     }
   }
   
-  if (!downloadSuccess) {
-    console.log('⚠️ No se pudo encontrar el enlace de descarga después de todos los intentos');
+  if (!downloadStarted) {
+    console.log('⚠️ No se pudo confirmar que se inició la descarga después de 1 minuto');
+    console.log('🔄 Continuando de todos modos para intentar encontrar el enlace...');
+  } else {
+    console.log('🎯 Descarga confirmada, esperando a que se complete el procesamiento...');
+    // Esperar un poco más para que se complete el procesamiento
+    await new Promise(r => setTimeout(r, 10000));
+  }
+  
+  // Ahora buscar el enlace de descarga de manera inteligente
+  console.log('🔍 Iniciando búsqueda inteligente del enlace de descarga...');
+  
+  let downloadLinkFound = false;
+  let searchAttempts = 0;
+  const maxSearchAttempts = 15; // 15 intentos = 45 segundos total
+  
+  while (!downloadLinkFound && searchAttempts < maxSearchAttempts) {
+    searchAttempts++;
+    console.log(`🔍 Búsqueda ${searchAttempts}/${maxSearchAttempts}: Buscando enlace de descarga...`);
     
-    // Último intento: screenshot para debug
     try {
-      console.log('📸 Tomando screenshot para debugging...');
-      const screenshot = await page.screenshot({ encoding: 'base64' });
-      console.log('📸 Screenshot tomado para debugging (base64 disponible)');
+      const downloadResult = await page.evaluate(() => {
+        // Buscar enlaces de descarga en diferentes ubicaciones
+        const downloadSelectors = [
+          'a[href*="descargar"]',
+          'a[href*="download"]',
+          '[class*="download"] a',
+          '[class*="descarga"] a',
+          '.content a[href*="descargar"]',
+          '.panel a[href*="descargar"]'
+        ];
+        
+        let foundLink = null;
+        let foundLocation = '';
+        
+        for (const selector of downloadSelectors) {
+          const links = document.querySelectorAll(selector);
+          if (links.length > 0) {
+            foundLink = links[0];
+            foundLocation = selector;
+            break;
+          }
+        }
+        
+        if (foundLink) {
+          return {
+            success: true,
+            href: foundLink.href,
+            text: foundLink.textContent.trim(),
+            location: foundLocation
+          };
+        }
+        
+        // Si no se encuentra con selectores específicos, buscar por texto
+        const allLinks = document.querySelectorAll('a');
+        const textBasedLinks = Array.from(allLinks).filter(link => {
+          const text = (link.textContent || '').toLowerCase();
+          return text.includes('descargar') || text.includes('download') || text.includes('bajar');
+        });
+        
+        if (textBasedLinks.length > 0) {
+          return {
+            success: true,
+            href: textBasedLinks[0].href,
+            text: textBasedLinks[0].textContent.trim(),
+            location: 'text-based search'
+          };
+        }
+        
+        return {
+          success: false,
+          message: 'No se encontraron enlaces de descarga',
+          totalLinks: allLinks.length,
+          pageTitle: document.title
+        };
+      });
       
-      // También guardar el HTML de la página para debugging
+      if (downloadResult.success) {
+        console.log('✅ ¡Enlace de descarga encontrado!');
+        console.log(`📥 Enlace: ${downloadResult.href}`);
+        console.log(`📝 Texto: ${downloadResult.text}`);
+        console.log(`📍 Ubicación: ${downloadResult.location}`);
+        
+        // Hacer click en el enlace de descarga
+        console.log('🖱️ Haciendo click en el enlace de descarga...');
+        await page.click(`a[href="${downloadResult.href}"]`);
+        console.log('✅ Click en enlace de descarga ejecutado');
+        
+        downloadLinkFound = true;
+        break;
+      } else {
+        console.log(`❌ Búsqueda ${searchAttempts}: ${downloadResult.message}`);
+        console.log(`📊 Total de enlaces en la página: ${downloadResult.totalLinks}`);
+        
+        if (searchAttempts < maxSearchAttempts) {
+          console.log('⏳ Esperando 3 segundos antes de la siguiente búsqueda...');
+          await new Promise(r => setTimeout(r, 3000));
+        }
+      }
+      
+    } catch (error) {
+      console.log(`❌ Error en búsqueda ${searchAttempts}:`, error.message);
+      if (searchAttempts < maxSearchAttempts) {
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    }
+  }
+  
+  if (!downloadLinkFound) {
+    console.log('❌ No se pudo encontrar el enlace de descarga después de todas las búsquedas');
+    console.log('📸 Tomando screenshot para debugging...');
+    
+    try {
+      const screenshot = await page.screenshot({ encoding: 'base64' });
+      console.log('📸 Screenshot tomado (base64 disponible)');
+      
+      // También capturar el HTML de la página
       const pageHTML = await page.content();
       console.log('📄 HTML de la página capturado para debugging');
       
     } catch (screenshotError) {
-      console.log('❌ No se pudo tomar screenshot:', screenshotError.message);
+      console.log('❌ Error al tomar screenshot:', screenshotError.message);
     }
     
-    throw new Error(`No se pudo encontrar el enlace de descarga después de ${maxAttempts} intentos`);
+    throw new Error('No se pudo encontrar el enlace de descarga después de múltiples intentos');
   }
-
-  // Usar la función mejorada de espera
-  console.log('Esperando que la descarga termine...');
+  
+  // Esperar a que la descarga termine
+  console.log('⏳ Esperando que la descarga termine...');
   const downloadedFile = await waitForCompleteDownload(downloadDir, before, 120000); // 2 minutos
   
   await browser.close();
