@@ -75,10 +75,19 @@ const waitForCompleteDownload = (downloadPath, filesBefore, timeout = 120000) =>
   const interval = setInterval(() => {
     try {
       const filesNow = fs.readdirSync(downloadPath);
+      
+      // Buscar archivos nuevos (que no estaban antes)
       const newFiles = filesNow.filter(f => !filesBefore.has(f));
+      
+      // Filtrar archivos .crdownload (descarga en progreso)
       const downloadingFiles = newFiles.filter(f => f.endsWith('.crdownload'));
       const completedFiles = newFiles.filter(f => !f.endsWith('.crdownload') && !f.endsWith('.tmp'));
+      
       console.log(`📁 Archivos en descarga: ${downloadingFiles.length}, ✅ Completos: ${completedFiles.length}`);
+      console.log(`🔍 Archivos nuevos encontrados: ${newFiles.join(', ') || 'ninguno'}`);
+      console.log(`📂 Total archivos en directorio: ${filesNow.length}`);
+      
+      // Si hay archivos completos, devolver el primero
       if (completedFiles.length > 0) {
         clearInterval(interval);
         const filePath = path.join(downloadPath, completedFiles[0]);
@@ -86,16 +95,25 @@ const waitForCompleteDownload = (downloadPath, filesBefore, timeout = 120000) =>
         resolve(filePath);
         return;
       }
+      
+      // Si hay archivos .crdownload, seguir esperando (solo log cada 10 segundos)
       if (downloadingFiles.length > 0 && (Date.now() - start) % 10000 < 1000) {
         console.log(`⏳ Esperando descarga: ${downloadingFiles[0]}`);
       }
+      
+      // Timeout
       if (Date.now() - start > timeout) {
         clearInterval(interval);
+        
+        // Intentar con archivos .crdownload si no hay otra opción
         if (downloadingFiles.length > 0) {
           console.log('⚠️ Timeout alcanzado, intentando usar archivo .crdownload...');
           const crdownloadFile = path.join(downloadPath, downloadingFiles[0]);
+          
+          // Renombrar el archivo .crdownload para intentar usarlo
           const finalName = downloadingFiles[0].replace('.crdownload', '');
           const finalPath = path.join(downloadPath, finalName);
+          
           try {
             fs.renameSync(crdownloadFile, finalPath);
             resolve(finalPath);
@@ -110,7 +128,7 @@ const waitForCompleteDownload = (downloadPath, filesBefore, timeout = 120000) =>
       clearInterval(interval);
       reject(new Error(`Error verificando archivos: ${error.message}`));
     }
-  }, 1000);
+  }, 1000); // Verificar cada segundo
 });
 
 // --- Utilidad para subir archivo a Google Drive ---
@@ -162,8 +180,8 @@ async function ejecutarFlujo(almacenNombre) {
   console.log(`Almacén valor: ${almacenValor}, Anaquel: ${anaquelValor}`);
 
   // --- Descarga con Puppeteer ---
-  const browser = await puppeteer.launch({
-    headless: true,
+  const browser = await puppeteer.launch({ 
+    headless: true, // Activar headless para producción
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -211,21 +229,236 @@ async function ejecutarFlujo(almacenNombre) {
 
   console.log('Configurando filtros de descarga...');
   await page.waitForSelector('input[type="checkbox"]', { timeout: 30000 });
+  
+  // Debugging: verificar que los elementos existan antes de interactuar
+  console.log('🔍 Verificando elementos de filtros...');
+  const filterElements = await page.evaluate(() => {
+    const almacenSelect = document.querySelector('select[name="almacen"]');
+    const desdeInput = document.querySelector('input[name="desde_anaquel"]');
+    const hastaInput = document.querySelector('input[name="hasta_anaquel"]');
+    
+    return {
+      almacenSelect: {
+        exists: !!almacenSelect,
+        value: almacenSelect ? almacenSelect.value : null,
+        options: almacenSelect ? almacenSelect.options.length : 0,
+        visible: almacenSelect ? almacenSelect.offsetParent !== null : false
+      },
+      desdeInput: {
+        exists: !!desdeInput,
+        value: desdeInput ? desdeInput.value : null,
+        visible: desdeInput ? desdeInput.offsetParent !== null : false,
+        disabled: desdeInput ? desdeInput.disabled : null
+      },
+      hastaInput: {
+        exists: !!hastaInput,
+        value: hastaInput ? hastaInput.value : null,
+        visible: hastaInput ? hastaInput.offsetParent !== null : false,
+        disabled: hastaInput ? hastaInput.disabled : null
+      }
+    };
+  });
+  
+  console.log('📊 Estado de elementos de filtros:', filterElements);
+  
   // Asegurar que 'usar_posicion' esté desactivado
+  console.log('🔧 Configurando checkbox usar_posicion...');
   await page.$eval('input[name="usar_posicion"]', el => { if (el.checked) el.click(); });
+  console.log('✅ Checkbox usar_posicion configurado');
+  
   // Asegurar que 'con_existencia' esté desactivado
+  console.log('🔧 Configurando checkbox con_existencia...');
   await page.$eval('input[name="con_existencia"]', el => { if (el.checked) el.click(); });
+  console.log('✅ Checkbox con_existencia configurado');
+  
   // Asegurar que 'mostrar_existencias' esté activado
+  console.log('🔧 Configurando checkbox mostrar_existencias...');
   await page.$eval('input[name="mostrar_existencias"]', el => { if (!el.checked) el.click(); });
-  // (Timeout después de los checkboxes eliminado)
-  await page.select('select[name="almacen"]', almacenValor);
-  await page.type('input[name="desde_anaquel"]', anaquelValor);
-  await page.type('input[name="hasta_anaquel"]', anaquelValor);
+  console.log('✅ Checkbox mostrar_existencias configurado');
+  
+  // Configurar almacén
+  console.log(`🔧 Seleccionando almacén: ${almacenValor}`);
+  try {
+    await page.select('select[name="almacen"]', almacenValor);
+    console.log('✅ Almacén seleccionado exitosamente');
+  } catch (error) {
+    console.log('❌ Error seleccionando almacén:', error.message);
+  }
+  
+  // Configurar campos de anaquel
+  console.log(`🔧 Configurando desde_anaquel: ${anaquelValor}`);
+  try {
+    // Usar JavaScript directo para configurar el valor
+    await page.evaluate((valor) => {
+      const input = document.querySelector('input[name="desde_anaquel"]');
+      if (input) {
+        input.value = valor;
+        // Disparar eventos para que la página reconozca el cambio
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.dispatchEvent(new Event('blur', { bubbles: true }));
+        console.log('Campo desde_anaquel configurado con valor:', valor);
+      }
+    }, anaquelValor);
+    console.log('✅ Campo desde_anaquel configurado');
+  } catch (error) {
+    console.log('❌ Error configurando desde_anaquel:', error.message);
+  }
+  
+  console.log(`🔧 Configurando hasta_anaquel: ${anaquelValor}`);
+  try {
+    // Usar JavaScript directo para configurar el valor
+    await page.evaluate((valor) => {
+      const input = document.querySelector('input[name="hasta_anaquel"]');
+      if (input) {
+        input.value = valor;
+        // Disparar eventos para que la página reconozca el cambio
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.dispatchEvent(new Event('blur', { bubbles: true }));
+        console.log('Campo hasta_anaquel configurado con valor:', valor);
+      }
+    }, anaquelValor);
+    console.log('✅ Campo hasta_anaquel configurado');
+  } catch (error) {
+    console.log('❌ Error configurando hasta_anaquel:', error.message);
+  }
+  
+  // Esperar un poco para que los valores se estabilicen
+  console.log('⏳ Esperando que los valores de los campos se estabilicen...');
+  await new Promise(r => setTimeout(r, 3000));
+  
+  // Verificar si los valores se mantuvieron
+  console.log('🔍 Verificando si los valores se mantuvieron...');
+  const intermediateState = await page.evaluate(() => {
+    const desdeInput = document.querySelector('input[name="desde_anaquel"]');
+    const hastaInput = document.querySelector('input[name="hasta_anaquel"]');
+    
+    // Debugging adicional: verificar si hay algún script interfiriendo
+    const desdeEvents = desdeInput ? desdeInput.getEventListeners : 'No disponible';
+    const hastaEvents = hastaInput ? hastaInput.getEventListeners : 'No disponible';
+    
+    return {
+      desde_anaquel: desdeInput ? desdeInput.value : null,
+      hasta_anaquel: hastaInput ? hastaInput.value : null,
+      desde_events: desdeEvents,
+      hasta_events: hastaEvents,
+      desde_readonly: desdeInput ? desdeInput.readOnly : null,
+      hasta_readonly: hastaInput ? hastaInput.readOnly : null
+    };
+  });
+  
+  console.log('📊 Estado intermedio de los campos:', intermediateState);
+  
+  // Si los valores se perdieron, intentar configurarlos nuevamente con método más agresivo
+  if (!intermediateState.desde_anaquel || !intermediateState.hasta_anaquel) {
+    console.log('⚠️ Los valores se perdieron, intentando configurarlos nuevamente con método más agresivo...');
+    
+    if (!intermediateState.desde_anaquel) {
+      console.log('🔄 Reconfigurando desde_anaquel con método agresivo...');
+      await page.evaluate((valor) => {
+        const input = document.querySelector('input[name="desde_anaquel"]');
+        if (input) {
+          // Limpiar el campo primero
+          input.value = '';
+          // Establecer el nuevo valor
+          input.value = valor;
+          // Disparar múltiples eventos
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          input.dispatchEvent(new Event('blur', { bubbles: true }));
+          input.dispatchEvent(new Event('keyup', { bubbles: true }));
+          input.dispatchEvent(new Event('keydown', { bubbles: true }));
+          console.log('Campo desde_anaquel reconfigurado agresivamente con valor:', valor);
+        }
+      }, anaquelValor);
+    }
+    
+    if (!intermediateState.hasta_anaquel) {
+      console.log('🔄 Reconfigurando hasta_anaquel con método agresivo...');
+      await page.evaluate((valor) => {
+        const input = document.querySelector('input[name="hasta_anaquel"]');
+        if (input) {
+          // Limpiar el campo primero
+          input.value = '';
+          // Establecer el nuevo valor
+          input.value = valor;
+          // Disparar múltiples eventos
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          input.dispatchEvent(new Event('blur', { bubbles: true }));
+          input.dispatchEvent(new Event('keyup', { bubbles: true }));
+          input.dispatchEvent(new Event('keydown', { bubbles: true }));
+          console.log('Campo hasta_anaquel reconfigurado agresivamente con valor:', valor);
+        }
+      }, anaquelValor);
+    }
+    
+    // Esperar un poco más
+    await new Promise(r => setTimeout(r, 3000));
+  }
+  
+  // Verificar estado final de los campos
+  console.log('🔍 Verificando estado final de los filtros...');
+  const finalFilterState = await page.evaluate(() => {
+    const almacenSelect = document.querySelector('select[name="almacen"]');
+    const desdeInput = document.querySelector('input[name="desde_anaquel"]');
+    const hastaInput = document.querySelector('input[name="hasta_anaquel"]');
+    
+    return {
+      almacen: almacenSelect ? almacenSelect.value : null,
+      desde_anaquel: desdeInput ? desdeInput.value : null,
+      hasta_anaquel: hastaInput ? hastaInput.value : null
+    };
+  });
+  
+  console.log('📊 Estado final de los filtros:', finalFilterState);
   
   console.log('Iniciando generación de archivo...');
+  
+  // Primer click en descargar (esto puede abrir un popup)
+  console.log('🖱️ Primer click en generar archivo...');
   await page.click('a[href="javascript:enviar(\'xls\');"]');
-  await new Promise(r => setTimeout(r, 1200000)); // Espera 60 segundos para que se genere el archivo
+  console.log('✅ Primer click ejecutado');
+  
+  // Esperar 5 segundos para que aparezca y se procese el popup
+  console.log('⏳ Esperando 5 segundos para que se procese el popup...');
+  await new Promise(r => setTimeout(r, 5000));
+  
+  // Segundo click en descargar (esto cierra el popup automáticamente)
+  console.log('🖱️ Segundo click en generar archivo (para cerrar popup)...');
+  await page.click('a[href="javascript:enviar(\'xls\');"]');
+  console.log('✅ Segundo click ejecutado');
+  
+  // Esperar 60 segundos para que se genere el archivo
+  console.log('⏳ Esperando 60 segundos para generación del archivo...');
+  await new Promise(r => setTimeout(r, 60000)); // Espera 60 segundos para que se genere el archivo
+  console.log('✅ Tiempo de espera completado');
+  
+  console.log('🔍 Buscando panel de proceso...');
   await page.waitForSelector('.slide-panel.process-center-wrapper.visible', { timeout: 30000 });
+  console.log('✅ Panel de proceso encontrado');
+  
+  // Debugging adicional del estado de la página
+  console.log('📋 Verificando contenido del panel...');
+  const panelContent = await page.evaluate(() => {
+    const panel = document.querySelector('.slide-panel.process-center-wrapper.visible');
+    if (!panel) return 'Panel no encontrado';
+    
+    const items = panel.querySelectorAll('.content ul li');
+    const links = panel.querySelectorAll('a');
+    const downloadLinks = panel.querySelectorAll('a[href*="descargar"]');
+    
+    return {
+      itemsCount: items.length,
+      linksCount: links.length,
+      downloadLinksCount: downloadLinks.length,
+      hasDownloadLink: downloadLinks.length > 0,
+      panelHTML: panel.innerHTML.substring(0, 200) + '...'
+    };
+  });
+  
+  console.log('📊 Estado del panel:', panelContent);
   
   // Esperar a que el proceso termine - aumentar tiempo y verificar estado
   console.log('⏳ Esperando procesamiento del archivo...');
@@ -235,15 +468,20 @@ async function ejecutarFlujo(almacenNombre) {
   let waitTime = 0;
   const maxWaitTime = 60000; // 1 minuto máximo
   
+  console.log('🔄 Iniciando búsqueda del enlace de descarga...');
+  
   while (!processingComplete && waitTime < maxWaitTime) {
+    console.log(`⏱️ Intento ${Math.floor(waitTime/3000) + 1}: Esperando 3 segundos...`);
     await new Promise(r => setTimeout(r, 3000)); // Esperar 3 segundos
     waitTime += 3000;
     
+    console.log(`🔍 Verificando enlace de descarga (${waitTime/1000}s)...`);
     const hasDownloadLink = await page.evaluate(() => {
       const panel = document.querySelector('.slide-panel.process-center-wrapper.visible');
       if (!panel) return false;
       
       const downloadLinks = panel.querySelectorAll('a[href*="descargar"]');
+      console.log(`Encontrados ${downloadLinks.length} enlaces de descarga`);
       return downloadLinks.length > 0;
     });
     
@@ -251,7 +489,26 @@ async function ejecutarFlujo(almacenNombre) {
       processingComplete = true;
       console.log(`✅ Procesamiento completado en ${waitTime/1000} segundos`);
     } else {
-      console.log(`⏳ Esperando... ${waitTime/1000}s`);
+      console.log(`❌ Intento ${Math.floor(waitTime/3000)}: No se encontró enlace de descarga`);
+      
+      // Debugging adicional: verificar estado de la página
+      const debugInfo = await page.evaluate(() => {
+        const panel = document.querySelector('.slide-panel.process-center-wrapper.visible');
+        if (!panel) return { error: 'Panel no visible' };
+        
+        const items = panel.querySelectorAll('.content ul li');
+        const links = panel.querySelectorAll('a');
+        const downloadLinks = panel.querySelectorAll('a[href*="descargar"]');
+        
+        return {
+          itemsCount: items.length,
+          linksCount: links.length,
+          downloadLinksCount: downloadLinks.length,
+          panelVisible: true
+        };
+      });
+      
+      console.log(`📊 Debug info:`, debugInfo);
     }
   }
   
@@ -270,10 +527,14 @@ async function ejecutarFlujo(almacenNombre) {
   const maxAttempts = 10;
   let downloadSuccess = false;
   
+  console.log('🎯 Iniciando búsqueda final del enlace de descarga...');
+  
   while (downloadAttempts < maxAttempts && !downloadSuccess) {
     try {
+      console.log(`📥 Intento ${downloadAttempts + 1}/${maxAttempts}: Esperando 2 segundos...`);
       await new Promise(r => setTimeout(r, 2000)); // Esperar 2 segundos entre intentos
       
+      console.log(`🔍 Verificando enlaces de descarga...`);
       const result = await page.evaluate(() => {
         const panel = document.querySelector('.slide-panel.process-center-wrapper.visible');
         if (!panel) {
@@ -312,11 +573,38 @@ async function ejecutarFlujo(almacenNombre) {
       if (result.success) {
         console.log('✅ ' + result.message);
         downloadSuccess = true;
+        
+        // Debugging adicional: verificar si realmente se inició la descarga
+        console.log('🔍 Verificando si se inició la descarga...');
+        await new Promise(r => setTimeout(r, 5000)); // Esperar 5 segundos
+        
+        // Verificar si hay archivos .crdownload o descargas en progreso
+        const downloadStatus = await page.evaluate(() => {
+          // Verificar si hay algún indicador de descarga en la página
+          const downloadIndicators = document.querySelectorAll('[class*="download"], [class*="descarga"], [class*="progress"], [class*="bar"]');
+          const hasDownloadText = document.body.innerText.toLowerCase().includes('descargando') || 
+                                  document.body.innerText.toLowerCase().includes('downloading') ||
+                                  document.body.innerText.toLowerCase().includes('procesando') ||
+                                  document.body.innerText.toLowerCase().includes('generando');
+          
+          return {
+            indicators: downloadIndicators.length,
+            hasDownloadText: hasDownloadText,
+            pageText: document.body.innerText.substring(0, 500) + '...'
+          };
+        });
+        console.log('📊 Estado de descarga en página:', downloadStatus);
+        
+        // Verificar configuración de descarga de Puppeteer
+        console.log('🔧 Verificando configuración de descarga de Puppeteer...');
+        console.log('📁 Directorio de descarga configurado:', downloadDir);
+        console.log('📂 Archivos en directorio antes de esperar:', fs.readdirSync(downloadDir));
+        
       } else {
         console.log(`❌ Intento ${downloadAttempts + 1}/${maxAttempts}: ${result.error}`);
         if (result.itemsFound !== undefined) {
           console.log(`📋 Items encontrados: ${result.itemsFound}, Links encontrados: ${result.allLinksFound}`);
-          debugLog('HTML del panel: ' + result.panelHTML);
+          console.log('🔍 HTML del panel:', result.panelHTML);
         }
         downloadAttempts++;
       }
@@ -328,12 +616,20 @@ async function ejecutarFlujo(almacenNombre) {
   }
   
   if (!downloadSuccess) {
+    console.log('⚠️ No se pudo encontrar el enlace de descarga después de todos los intentos');
+    
     // Último intento: screenshot para debug
     try {
+      console.log('📸 Tomando screenshot para debugging...');
       const screenshot = await page.screenshot({ encoding: 'base64' });
       console.log('📸 Screenshot tomado para debugging (base64 disponible)');
+      
+      // También guardar el HTML de la página para debugging
+      const pageHTML = await page.content();
+      console.log('📄 HTML de la página capturado para debugging');
+      
     } catch (screenshotError) {
-      console.log('No se pudo tomar screenshot:', screenshotError.message);
+      console.log('❌ No se pudo tomar screenshot:', screenshotError.message);
     }
     
     throw new Error(`No se pudo encontrar el enlace de descarga después de ${maxAttempts} intentos`);
@@ -591,7 +887,7 @@ app.post('/debug-download', async (req, res) => {
   
   try {
     const browser = await puppeteer.launch({ 
-      headless: true, 
+      headless: false, 
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] 
     });
     
