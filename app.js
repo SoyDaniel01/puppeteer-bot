@@ -244,37 +244,35 @@ async function ejecutarFlujo(almacenNombre) {
     await new Promise(r => setTimeout(r, 2000));
 
     // Generar archivo
-    console.log('Generando archivo...');
+    console.log('Iniciando generación de archivo...');
     await page.click('a[href="javascript:enviar(\'xls\');"]');
-    await new Promise(r => setTimeout(r, 5000));
-    await page.click('a[href="javascript:enviar(\'xls\');"]');
+    
+    // Esperar a que aparezca el panel de proceso
+    console.log('Esperando panel de procesamiento...');
+    try {
+      await page.waitForSelector('.slide-panel.process-center-wrapper.visible', { timeout: 30000 });
+      console.log('Panel de procesamiento encontrado');
+    } catch (error) {
+      console.log('Panel no encontrado, continuando...');
+    }
 
-    // Buscar enlace de descarga
+    // Esperar a que se complete el procesamiento (15 segundos debería ser suficiente)
+    console.log('Esperando que se complete el procesamiento...');
+    await new Promise(r => setTimeout(r, 15000));
+
+    // Buscar enlace de descarga una sola vez
     console.log('Buscando enlace de descarga...');
-    let downloadFound = false;
-    const maxAttempts = 15;
-
-    for (let attempt = 1; attempt <= maxAttempts && !downloadFound; attempt++) {
-      console.log(`Búsqueda ${attempt}/${maxAttempts}...`);
-
-      try {
-        const downloadLink = await page.$('a[href*="descargar"]');
-        if (downloadLink) {
-          console.log('Enlace encontrado, descargando...');
-          await downloadLink.click();
-          downloadFound = true;
-        } else {
-          await new Promise(r => setTimeout(r, 3000));
-        }
-      } catch (error) {
-        debugLog(`Error en búsqueda ${attempt}: ${error.message}`);
-        await new Promise(r => setTimeout(r, 3000));
-      }
+    const downloadLink = await page.$('a[href*="descargar"]');
+    
+    if (!downloadLink) {
+      // Si no se encuentra, tomar screenshot para debug y fallar
+      console.log('No se encontró enlace de descarga, tomando screenshot...');
+      await page.screenshot({ path: 'debug-no-download-link.png' });
+      throw new Error('No se encontró el enlace de descarga después del procesamiento');
     }
 
-    if (!downloadFound) {
-      throw new Error('No se pudo encontrar el enlace de descarga');
-    }
+    console.log('Enlace de descarga encontrado, iniciando descarga...');
+    await downloadLink.click();
 
     // Esperar descarga
     console.log('Esperando descarga...');
