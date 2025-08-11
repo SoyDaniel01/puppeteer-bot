@@ -461,6 +461,17 @@ async function ejecutarFlujo(almacenNombre) {
   // Debugging: verificar qué hay en la página después de los clicks
   console.log('🔍 Verificando estado de la página después de los clicks...');
   
+  // Verificación básica del estado de la página
+  console.log('📄 Verificando URL y título de la página...');
+  const basicPageInfo = await page.evaluate(() => {
+    return {
+      url: window.location.href,
+      title: document.title,
+      bodyTextLength: document.body ? document.body.innerText.length : 0
+    };
+  });
+  console.log('📊 Información básica de la página:', basicPageInfo);
+  
   let pageState;
   try {
     pageState = await page.evaluate(() => {
@@ -519,6 +530,34 @@ async function ejecutarFlujo(almacenNombre) {
       bodyText: 'Error en evaluación',
       url: 'Error en evaluación'
     };
+  }
+  
+  // Verificación adicional: buscar cualquier enlace de descarga en la página
+  console.log('🔍 Buscando enlaces de descarga en la página...');
+  try {
+    const downloadLinksInfo = await page.evaluate(() => {
+      const allLinks = document.querySelectorAll('a');
+      const downloadLinks = Array.from(allLinks).filter(link => {
+        const href = link.href || '';
+        const text = link.textContent || '';
+        return href.includes('descargar') || href.includes('download') || 
+               text.toLowerCase().includes('descargar') || text.toLowerCase().includes('download');
+      });
+      
+      return {
+        totalLinks: allLinks.length,
+        downloadLinks: downloadLinks.length,
+        downloadLinkTexts: downloadLinks.map(link => ({
+          href: link.href,
+          text: link.textContent.trim()
+        }))
+      };
+    });
+    
+    console.log('📊 Información de enlaces de descarga:', downloadLinksInfo);
+    
+  } catch (linkError) {
+    console.log('❌ Error buscando enlaces de descarga:', linkError.message);
   }
   
   // Continuar directamente con la búsqueda del enlace de descarga
