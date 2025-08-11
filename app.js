@@ -460,36 +460,66 @@ async function ejecutarFlujo(almacenNombre) {
   
   // Debugging: verificar qué hay en la página después de los clicks
   console.log('🔍 Verificando estado de la página después de los clicks...');
-  const pageState = await page.evaluate(() => {
-    // Buscar el selector original
-    const originalSelector = document.querySelector('.slide-panel.process-center-wrapper.visible');
-    
-    // Buscar selectores alternativos que podrían indicar el estado
-    const alternativeSelectors = {
-      slidePanel: document.querySelector('.slide-panel'),
-      processCenter: document.querySelector('.process-center-wrapper'),
-      visibleElements: document.querySelectorAll('[class*="visible"]'),
-      processElements: document.querySelectorAll('[class*="process"]'),
-      downloadElements: document.querySelectorAll('[class*="download"]'),
-      progressElements: document.querySelectorAll('[class*="progress"]')
-    };
-    
-    // Verificar si hay algún popup o modal activo
-    const activeModals = document.querySelectorAll('.modal[style*="display: block"], .modal.show');
-    const activePopups = document.querySelectorAll('.popup, .overlay');
-    
-    return {
-      originalSelectorFound: !!originalSelector,
-      alternativeSelectors,
-      activeModals: activeModals.length,
-      activePopups: activePopups.length,
-      pageTitle: document.title,
-      bodyText: document.body.innerText.substring(0, 500) + '...',
-      url: window.location.href
-    };
-  });
   
-  console.log('📊 Estado de la página después de los clicks:', pageState);
+  let pageState;
+  try {
+    pageState = await page.evaluate(() => {
+      // Buscar el selector original
+      const originalSelector = document.querySelector('.slide-panel.process-center-wrapper.visible');
+      
+      // Buscar selectores alternativos que podrían indicar el estado
+      const alternativeSelectors = {
+        slidePanel: document.querySelector('.slide-panel'),
+        processCenter: document.querySelector('.process-center-wrapper'),
+        visibleElements: document.querySelectorAll('[class*="visible"]'),
+        processElements: document.querySelectorAll('[class*="process"]'),
+        downloadElements: document.querySelectorAll('[class*="download"]'),
+        progressElements: document.querySelectorAll('[class*="progress"]')
+      };
+      
+      // Verificar si hay algún popup o modal activo
+      const activeModals = document.querySelectorAll('.modal[style*="display: block"], .modal.show');
+      const activePopups = document.querySelectorAll('.popup, .overlay');
+      
+      return {
+        originalSelectorFound: !!originalSelector,
+        alternativeSelectors,
+        activeModals: activeModals.length,
+        activePopups: activePopups.length,
+        pageTitle: document.title,
+        bodyText: document.body.innerText.substring(0, 500) + '...',
+        url: window.location.href
+      };
+    });
+    
+    // Verificar que pageState sea válido
+    if (!pageState || typeof pageState !== 'object') {
+      console.log('⚠️ page.evaluate retornó valor inválido, usando valores por defecto');
+      pageState = {
+        originalSelectorFound: false,
+        alternativeSelectors: {},
+        activeModals: 0,
+        activePopups: 0,
+        pageTitle: 'No disponible',
+        bodyText: 'No disponible',
+        url: 'No disponible'
+      };
+    }
+    
+    console.log('📊 Estado de la página después de los clicks:', pageState);
+    
+  } catch (evaluateError) {
+    console.log('❌ Error en page.evaluate, usando valores por defecto:', evaluateError.message);
+    pageState = {
+      originalSelectorFound: false,
+      alternativeSelectors: {},
+      activeModals: 0,
+      activePopups: 0,
+      pageTitle: 'Error en evaluación',
+      bodyText: 'Error en evaluación',
+      url: 'Error en evaluación'
+    };
+  }
   
   // Si no se encuentra el selector original, buscar alternativas
   if (!pageState.originalSelectorFound) {
@@ -552,21 +582,45 @@ async function ejecutarFlujo(almacenNombre) {
   // Si no se encontró el panel, verificar si hay algún indicador de proceso
   if (!panelFound) {
     console.log('🔍 Verificando si hay algún indicador de proceso en la página...');
-    const processIndicators = await page.evaluate(() => {
-      // Buscar cualquier elemento que indique que algo está procesándose
-      const indicators = {
-        loadingSpinners: document.querySelectorAll('[class*="loading"], [class*="spinner"], [class*="progress"]'),
-        processText: document.body.innerText.toLowerCase().includes('procesando') || 
-                    document.body.innerText.toLowerCase().includes('generando') ||
-                    document.body.innerText.toLowerCase().includes('descargando'),
-        downloadLinks: document.querySelectorAll('a[href*="descargar"], a[href*="download"]'),
-        anyVisible: document.querySelectorAll('[style*="display: block"], [class*="visible"], [class*="show"]')
-      };
-      
-      return indicators;
-    });
     
-    console.log('📊 Indicadores de proceso encontrados:', processIndicators);
+    let processIndicators;
+    try {
+      processIndicators = await page.evaluate(() => {
+        // Buscar cualquier elemento que indique que algo está procesándose
+        const indicators = {
+          loadingSpinners: document.querySelectorAll('[class*="loading"], [class*="spinner"], [class*="progress"]'),
+          processText: document.body.innerText.toLowerCase().includes('procesando') || 
+                      document.body.innerText.toLowerCase().includes('generando') ||
+                      document.body.innerText.toLowerCase().includes('descargando'),
+          downloadLinks: document.querySelectorAll('a[href*="descargar"], a[href*="download"]'),
+          anyVisible: document.querySelectorAll('[style*="display: block"], [class*="visible"], [class*="show"]')
+        };
+        
+        return indicators;
+      });
+      
+      // Verificar que processIndicators sea válido
+      if (!processIndicators || typeof processIndicators !== 'object') {
+        console.log('⚠️ page.evaluate para indicadores retornó valor inválido, usando valores por defecto');
+        processIndicators = {
+          loadingSpinners: [],
+          processText: false,
+          downloadLinks: [],
+          anyVisible: []
+        };
+      }
+      
+      console.log('📊 Indicadores de proceso encontrados:', processIndicators);
+      
+    } catch (evaluateError) {
+      console.log('❌ Error en page.evaluate para indicadores, usando valores por defecto:', evaluateError.message);
+      processIndicators = {
+        loadingSpinners: [],
+        processText: false,
+        downloadLinks: [],
+        anyVisible: []
+      };
+    }
     
     if (processIndicators.processText || processIndicators.downloadLinks.length > 0) {
       console.log('✅ Se encontraron indicadores de proceso, continuando...');
