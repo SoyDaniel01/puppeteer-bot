@@ -458,9 +458,121 @@ async function ejecutarFlujo(almacenNombre) {
   await new Promise(r => setTimeout(r, 60000)); // Espera 60 segundos para que se genere el archivo
   console.log('✅ Tiempo de espera completado');
   
+  // Debugging: verificar qué hay en la página después de los clicks
+  console.log('🔍 Verificando estado de la página después de los clicks...');
+  const pageState = await page.evaluate(() => {
+    // Buscar el selector original
+    const originalSelector = document.querySelector('.slide-panel.process-center-wrapper.visible');
+    
+    // Buscar selectores alternativos que podrían indicar el estado
+    const alternativeSelectors = {
+      slidePanel: document.querySelector('.slide-panel'),
+      processCenter: document.querySelector('.process-center-wrapper'),
+      visibleElements: document.querySelectorAll('[class*="visible"]'),
+      processElements: document.querySelectorAll('[class*="process"]'),
+      downloadElements: document.querySelectorAll('[class*="download"]'),
+      progressElements: document.querySelectorAll('[class*="progress"]')
+    };
+    
+    // Verificar si hay algún popup o modal activo
+    const activeModals = document.querySelectorAll('.modal[style*="display: block"], .modal.show');
+    const activePopups = document.querySelectorAll('.popup, .overlay');
+    
+    return {
+      originalSelectorFound: !!originalSelector,
+      alternativeSelectors,
+      activeModals: activeModals.length,
+      activePopups: activePopups.length,
+      pageTitle: document.title,
+      bodyText: document.body.innerText.substring(0, 500) + '...',
+      url: window.location.href
+    };
+  });
+  
+  console.log('📊 Estado de la página después de los clicks:', pageState);
+  
+  // Si no se encuentra el selector original, buscar alternativas
+  if (!pageState.originalSelectorFound) {
+    console.log('⚠️ Selector original no encontrado, buscando alternativas...');
+    
+    // Intentar con selectores alternativos
+    let alternativeSelectorFound = false;
+    
+    if (pageState.alternativeSelectors.slidePanel) {
+      console.log('🔍 Intentando con selector alternativo: .slide-panel');
+      try {
+        await page.waitForSelector('.slide-panel', { timeout: 10000 });
+        console.log('✅ Selector alternativo .slide-panel encontrado');
+        alternativeSelectorFound = true;
+      } catch (error) {
+        console.log('❌ Selector .slide-panel no funcionó:', error.message);
+      }
+    }
+    
+    if (!alternativeSelectorFound && pageState.alternativeSelectors.processCenter) {
+      console.log('🔍 Intentando con selector alternativo: .process-center-wrapper');
+      try {
+        await page.waitForSelector('.process-center-wrapper', { timeout: 10000 });
+        console.log('✅ Selector alternativo .process-center-wrapper encontrado');
+        alternativeSelectorFound = true;
+      } catch (error) {
+        console.log('❌ Selector .process-center-wrapper no funcionó:', error.message);
+      }
+    }
+    
+    if (!alternativeSelectorFound) {
+      console.log('❌ No se encontraron selectores alternativos');
+      console.log('📸 Tomando screenshot para debugging...');
+      
+      try {
+        const screenshot = await page.screenshot({ encoding: 'base64' });
+        console.log('📸 Screenshot tomado (base64 disponible)');
+      } catch (screenshotError) {
+        console.log('❌ Error al tomar screenshot:', screenshotError.message);
+      }
+      
+      // Continuar de todos modos, pero con advertencia
+      console.log('⚠️ Continuando sin encontrar el panel de proceso...');
+    }
+  }
+  
   console.log('🔍 Buscando panel de proceso...');
-  await page.waitForSelector('.slide-panel.process-center-wrapper.visible', { timeout: 30000 });
-  console.log('✅ Panel de proceso encontrado');
+  
+  // Intentar encontrar el panel de proceso con manejo de errores
+  let panelFound = false;
+  try {
+    await page.waitForSelector('.slide-panel.process-center-wrapper.visible', { timeout: 30000 });
+    console.log('✅ Panel de proceso encontrado con selector original');
+    panelFound = true;
+  } catch (error) {
+    console.log('❌ Selector original no encontrado, continuando de todos modos...');
+    console.log('📊 Error específico:', error.message);
+  }
+  
+  // Si no se encontró el panel, verificar si hay algún indicador de proceso
+  if (!panelFound) {
+    console.log('🔍 Verificando si hay algún indicador de proceso en la página...');
+    const processIndicators = await page.evaluate(() => {
+      // Buscar cualquier elemento que indique que algo está procesándose
+      const indicators = {
+        loadingSpinners: document.querySelectorAll('[class*="loading"], [class*="spinner"], [class*="progress"]'),
+        processText: document.body.innerText.toLowerCase().includes('procesando') || 
+                    document.body.innerText.toLowerCase().includes('generando') ||
+                    document.body.innerText.toLowerCase().includes('descargando'),
+        downloadLinks: document.querySelectorAll('a[href*="descargar"], a[href*="download"]'),
+        anyVisible: document.querySelectorAll('[style*="display: block"], [class*="visible"], [class*="show"]')
+      };
+      
+      return indicators;
+    });
+    
+    console.log('📊 Indicadores de proceso encontrados:', processIndicators);
+    
+    if (processIndicators.processText || processIndicators.downloadLinks.length > 0) {
+      console.log('✅ Se encontraron indicadores de proceso, continuando...');
+      panelFound = true;
+    }
+  }
   
   // Debugging adicional del estado de la página
   console.log('📋 Verificando contenido del panel...');
