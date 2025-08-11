@@ -213,7 +213,7 @@ async function ejecutarFlujo(almacenNombre) {
         page.waitForNavigation({ timeout: 30000 }),
         page.click('button[type="submit"]')
       ]);
-      await page.waitForTimeout(3000);
+      await new Promise(r => setTimeout(r, 3000));
     }
 
     // Configuración de filtros
@@ -241,12 +241,12 @@ async function ejecutarFlujo(almacenNombre) {
       });
     }, anaquelValor);
 
-    await page.waitForTimeout(2000);
+    await new Promise(r => setTimeout(r, 2000));
 
     // Generar archivo
     console.log('Generando archivo...');
     await page.click('a[href="javascript:enviar(\'xls\');"]');
-    await page.waitForTimeout(5000);
+    await new Promise(r => setTimeout(r, 5000));
     await page.click('a[href="javascript:enviar(\'xls\');"]');
 
     // Buscar enlace de descarga
@@ -264,11 +264,11 @@ async function ejecutarFlujo(almacenNombre) {
           await downloadLink.click();
           downloadFound = true;
         } else {
-          await page.waitForTimeout(3000);
+          await new Promise(r => setTimeout(r, 3000));
         }
       } catch (error) {
         debugLog(`Error en búsqueda ${attempt}: ${error.message}`);
-        await page.waitForTimeout(3000);
+        await new Promise(r => setTimeout(r, 3000));
       }
     }
 
