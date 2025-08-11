@@ -180,19 +180,42 @@ async function ejecutarFlujo(almacenNombre) {
   console.log(`Almacén valor: ${almacenValor}, Anaquel: ${anaquelValor}`);
 
   // --- Descarga con Puppeteer ---
-  const browser = await puppeteer.launch({ 
-    headless: true, // Activar headless para producción
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--disable-software-rasterizer',
-      '--single-process',
-      '--no-zygote',
-      '--headless=new'
-    ]
-  });
+  console.log('🚀 Iniciando Puppeteer...');
+  
+  let browser;
+  let retryCount = 0;
+  const maxRetries = 3;
+  
+  while (retryCount < maxRetries) {
+    try {
+      browser = await puppeteer.launch({ 
+        headless: true, // Activar headless para producción
+        timeout: 60000, // Aumentar timeout a 60 segundos
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor',
+          '--memory-pressure-off',
+          '--max_old_space_size=4096'
+        ]
+      });
+      console.log('✅ Puppeteer iniciado exitosamente');
+      break;
+    } catch (error) {
+      retryCount++;
+      console.log(`❌ Intento ${retryCount}/${maxRetries} falló:`, error.message);
+      
+      if (retryCount >= maxRetries) {
+        throw new Error(`Puppeteer no pudo iniciar después de ${maxRetries} intentos: ${error.message}`);
+      }
+      
+      console.log('🔄 Reintentando en 5 segundos...');
+      await new Promise(r => setTimeout(r, 5000));
+    }
+  }
   
   const page = await browser.newPage();
   const downloadDir = path.resolve('./puppeteer-downloads');
